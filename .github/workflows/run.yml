@@ -1,0 +1,67 @@
+name: i2psam
+
+on:
+  push:
+    branches: [ "main" ]
+    
+jobs:
+  clang-format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v2
+      - run: clang-format-12 --version
+      - run: for file in $(find . -iname '*.cpp' -or -iname '*.c' -or -iname '*.h' -and -not -iname 'doctest.h' ); do diff -u <(cat "$file") <(clang-format-12 "$file") || exit 1; done
+  #windows_build:
+    #runs-on: windows-latest
+    #timeout-minutes: 60
+    #steps:
+      #- uses: actions/checkout@v2
+      #- run: mkdir build
+      #- run: cd build
+
+      #- name: Install Boost
+        #run: |
+          #vcpkg install boost-asio:x64-windows
+      #- name: Build Win
+        #run: |
+          #cmake . -Bbuild -DCMAKE_CXX_COMPILER="Visual Studio 17"
+          #cmake --build D:/a/i2p_sam/i2p_sam/build
+  ubuntu_build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        compiler:
+          - command: g++-10
+          - command: clang++-12
+    steps:
+      - name: Cache boost
+        uses: actions/cache@v1.0.3
+        id: cache-boost
+        with:
+          path: "~/boost"
+          key: libboost-all-dev
+      - name: Install boost
+        env:
+          CACHE_HIT: ${{steps.cache-boost.outputs.cache-hit}}
+        run: |
+          if [[ "$CACHE_HIT" == 'false' ]]; then
+            sudo cp --force --recursive ~/boost/* /
+          else
+            sudo apt-get update && sudo apt-get install libboost-all-dev
+            mkdir -p ~/boost
+            for dep in libboost-all-dev; do
+              dpkg -L $dep | while IFS= read -r f; do if test -f $f; then echo $f; fi; done | xargs cp --parents --target-directory ~/boost/
+            done
+
+            sudo apt install libc++-12-dev libc++abi-12-dev
+          fi
+
+      - uses: actions/checkout@v2
+      - run: mkdir build
+      - run: cd build
+      - name: Build Ubuntu ${{matrix.compiler.command}}
+        run: |
+          cmake . -Bbuild -DCMAKE_CXX_COMPILER="${{matrix.compiler.command}}"
+          cmake --build /home/runner/work/i2p_sam/i2p_sam/build
