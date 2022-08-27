@@ -19,6 +19,5 @@ int main() {
             s->async_accept([s]([[maybe_unused]] std::shared_ptr<i2p_sam::sam_socket> sam_sock,
                                 std::string, uint16_t, uint16_t, i2p_sam::errors::sam_error) {});
         });
-
     io.run();
 }

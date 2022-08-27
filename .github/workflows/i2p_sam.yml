@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - run: clang-format-12 --version
-      - run: for file in $(find . -iname '*.cpp' -or -iname '*.c' -or -iname '*.h' -and -not -iname 'doctest.h' ); do diff -u <(cat "$file") <(clang-format-12 "$file") || exit 1; done
+      - run: for file in $(find . -iname '*.cpp' -or -iname '*.c' -or -iname '*.h'); do diff -u <(cat "$file") <(clang-format-12 "$file") || exit 1; done
   ubuntu_build:
     runs-on: self-hosted
     timeout-minutes: 10
