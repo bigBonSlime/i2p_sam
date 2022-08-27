@@ -1,0 +1,42 @@
+name: i2psam
+on:
+  push:
+    branches: [ "main" ]
+    
+jobs:
+  clang-format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v2
+      - run: clang-format-12 --version
+      - run: for file in $(find . -iname '*.cpp' -or -iname '*.c' -or -iname '*.h' -and -not -iname 'doctest.h' ); do diff -u <(cat "$file") <(clang-format-12 "$file") || exit 1; done
+  ubuntu_build:
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+      - name: clone 
+        run: |
+          sleep 5
+          git clone https://github.com/bigBonSlime/i2p_sam
+      - name: install dependencies
+        run: |
+          cd i2p_sam/build
+          touch conanfile.txt
+          echo "[requires]
+          boost/1.79.0
+
+          [generators]
+          CMakeDeps
+          CMakeToolchain" > conanfile.txt
+          conan install . --install-folder cmake-build-release --build=missing -pr:b=default --profile=ClangProfile
+      - name: build
+        run: |
+          cd i2p_sam/build
+          cmake . -DCMAKE_TOOLCHAIN_FILE=cmake-build-release/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release -D CMAKE_CXX_COMPILER=clang++-12
+          cmake --build .
+      - name: delete temp data
+        if: success() || failure()
+        run: |
+          rm -R i2p_sam
+
