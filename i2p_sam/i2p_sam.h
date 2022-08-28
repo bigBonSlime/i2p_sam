@@ -233,11 +233,40 @@ public:
                                   |    weird shit
     */
 
-    /*
     template <typename T>
-    void async_connect(const std::string &id, const std::string &dest, T handler,
-                       uint16_t from_port, uint16_t to_port) {}
-                       */
+    void async_connect(const std::string &id, [[maybe_unused]] const std::string &dest, T handler,
+                       uint16_t from_port = 0, uint16_t to_port = 0,
+                       const std::string &host = "127.0.0.1",
+                       uint16_t port = i2p_sam::sam_default_port,
+                       const std::string &handshake_params = "") {
+        std::shared_ptr<sam_socket> sam_sock(new sam_socket(this->socket.get_io_executor()));
+        sam_sock->async_connect(host, port, [=](errors::sam_error ec) {
+            if (!ec) {
+                async_handshake(*sam_sock, handshake_params, [=](errors::sam_error ec) {
+                    if (!ec) {
+                        sam_sock->async_write(
+                            "STREAM CONNECT ID=" + id + " DESTINATION=" + dest + " FROM_PORT=" +
+                                std::to_string(from_port) + " TO_PORT=" + std::to_string(to_port),
+                            [=](errors::sam_error ec, uint64_t) {
+                                sam_sock->async_read_line(
+                                    i2p_sam::max_sam_answer_lenght,
+                                    [=](std::string res, errors::sam_error ec) {
+                                        handler(sam_sock, (ec == i2p_sam::errors::sam_error())
+                                                              ? i2p_sam::get_result(res)
+                                                              : ec);
+                                    });
+                            });
+
+                    } else {
+                        handler(sam_sock, ec);
+                    }
+                });
+
+            } else {
+                handler(sam_sock, ec);
+            }
+        });
+    }
 };
 
 template <typename T>
@@ -268,72 +297,59 @@ void async_create_stream_session(boost::asio::io_context &io_context, const std:
                                  const std::string &handshake_params,
                                  const std::string &stream_params, T handler) {
     std::shared_ptr<sam_socket> sam_sock(new sam_socket(io_context));
-    sam_sock->async_connect(
-        host, port,
-        [sam_sock, handler, handshake_params, id, destination,
-         stream_params](errors::sam_error ec) {
-            if (!ec) {
-                async_handshake(
-                    *sam_sock, handshake_params,
-                    [sam_sock, handler, destination, id, stream_params](errors::sam_error ec) {
+    sam_sock->async_connect(host, port, [=](errors::sam_error ec) {
+        if (!ec) {
+            async_handshake(*sam_sock, handshake_params, [=](errors::sam_error ec) {
+                if (!ec) {
+                    std::string sam_create_request = "SESSION CREATE STYLE=STREAM ID=" + id +
+                                                     " DESTINATION=" + destination + " " +
+                                                     stream_params + "\n";
+                    sam_sock->async_write(sam_create_request, [=, sign_type =
+                                                                      get_value(stream_params,
+                                                                                "SIGNATURE_TYPE")](
+                                                                  errors::sam_error ec, uint64_t) {
                         if (!ec) {
-                            std::string sam_create_request =
-                                "SESSION CREATE STYLE=STREAM ID=" + id +
-                                " DESTINATION=" + destination + " " + stream_params + "\n";
-                            sam_sock->async_write(
-                                sam_create_request,
-                                [sam_sock, handler, id, destination,
-                                 sign_type = get_value(stream_params, "SIGNATURE_TYPE")](
-                                    errors::sam_error ec, uint64_t) {
-                                    if (!ec) {
-                                        sam_sock->async_read_line(10000, [handler, sam_sock, id,
-                                                                          destination, sign_type](
-                                                                             std::string s,
-                                                                             errors::sam_error ec) {
-                                            if (!ec) {
-                                                auto res = get_result(s);
-                                                if (res == i2p_sam::errors::sam_error()) {
-                                                    std::string ret_destination =
-                                                        i2p_sam::get_value(s, "DESTINATION");
-                                                    handler(
-                                                        std::shared_ptr<stream_session>(
-                                                            new stream_session(
-                                                                *sam_sock, id,
-                                                                public_destination_from_priv_key(
-                                                                    ret_destination),
-                                                                ret_destination)),
-                                                        i2p_sam::errors::sam_error());
+                            sam_sock->async_read_line(10000, [=](std::string s,
+                                                                 errors::sam_error ec) {
+                                if (!ec) {
+                                    auto res = get_result(s);
+                                    if (res == i2p_sam::errors::sam_error()) {
+                                        std::string ret_destination =
+                                            i2p_sam::get_value(s, "DESTINATION");
+                                        handler(
+                                            std::shared_ptr<stream_session>(new stream_session(
+                                                *sam_sock, id,
+                                                public_destination_from_priv_key(ret_destination),
+                                                ret_destination)),
+                                            i2p_sam::errors::sam_error());
 
-                                                } else {
-                                                    handler(std::shared_ptr<stream_session>(
-                                                                new stream_session(*sam_sock, "",
-                                                                                   "", "")),
-                                                            ec);
-                                                }
-                                            } else {
-                                                handler(
-                                                    std::shared_ptr<stream_session>(
-                                                        new stream_session(*sam_sock, "", "", "")),
-                                                    ec);
-                                            }
-                                        });
                                     } else {
                                         handler(std::shared_ptr<stream_session>(
                                                     new stream_session(*sam_sock, "", "", "")),
                                                 ec);
                                     }
-                                });
+                                } else {
+                                    handler(std::shared_ptr<stream_session>(
+                                                new stream_session(*sam_sock, "", "", "")),
+                                            ec);
+                                }
+                            });
                         } else {
                             handler(std::shared_ptr<stream_session>(
                                         new stream_session(*sam_sock, "", "", "")),
                                     ec);
                         }
                     });
-            } else {
-                handler(std::shared_ptr<stream_session>(new stream_session(*sam_sock, "", "", "")),
+                } else {
+                    handler(
+                        std::shared_ptr<stream_session>(new stream_session(*sam_sock, "", "", "")),
                         ec);
-            }
-        });
+                }
+            });
+        } else {
+            handler(std::shared_ptr<stream_session>(new stream_session(*sam_sock, "", "", "")), ec);
+        }
+    });
 }
 
 } // namespace i2p_sam
