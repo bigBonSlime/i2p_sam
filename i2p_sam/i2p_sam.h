@@ -248,13 +248,17 @@ public:
                             "STREAM CONNECT ID=" + id + " DESTINATION=" + dest + " FROM_PORT=" +
                                 std::to_string(from_port) + " TO_PORT=" + std::to_string(to_port),
                             [=](errors::sam_error ec, uint64_t) {
-                                sam_sock->async_read_line(
-                                    i2p_sam::max_sam_answer_lenght,
-                                    [=](std::string res, errors::sam_error ec) {
-                                        handler(sam_sock, (ec == i2p_sam::errors::sam_error())
-                                                              ? i2p_sam::get_result(res)
-                                                              : ec);
-                                    });
+                                if (!ec) {
+                                    sam_sock->async_read_line(
+                                        i2p_sam::max_sam_answer_lenght,
+                                        [=](std::string res, errors::sam_error ec) {
+                                            handler(sam_sock, (ec == i2p_sam::errors::sam_error())
+                                                                  ? i2p_sam::get_result(res)
+                                                                  : ec);
+                                        });
+                                } else {
+                                    handler(sam_sock, ec);
+                                }
                             });
 
                     } else {

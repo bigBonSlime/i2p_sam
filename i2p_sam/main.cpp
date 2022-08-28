@@ -16,11 +16,10 @@ int main() {
         [](std::shared_ptr<i2p_sam::stream_session> s, i2p_sam::errors::sam_error ec) {
             std::cout << ec.what() << std::endl;
             std::cout << s->get_public_destination() << std::endl;
-            s->async_connect(
-                s->get_id(), s->get_public_destination(),
-                [](std::shared_ptr<i2p_sam::sam_socket> s, i2p_sam::errors::sam_error ec) {
+            s->async_connect(s->get_id(), s->get_public_destination(),
+                             [](std::shared_ptr<i2p_sam::sam_socket>, i2p_sam::errors::sam_error) {
 
-            });
+                             });
             s->async_accept([s]([[maybe_unused]] std::shared_ptr<i2p_sam::sam_socket> sam_sock,
                                 std::string, uint16_t, uint16_t, i2p_sam::errors::sam_error) {});
         });
