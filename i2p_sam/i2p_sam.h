@@ -145,8 +145,7 @@ public:
     friend void async_create_stream_session(boost::asio::io_context &, const std::string &,
                                             const std::string &, const std::string &,
                                             const std::string &, T,
-                                            const std::string &sam_host = "127.0.0.1",
-                                            uint16_t sam_port = 7656);
+                                            const std::string & = "127.0.0.1", uint16_t = 7656);
 
     template <typename T>
     void async_accept(T handler, const std::string &host = "127.0.0.1",
