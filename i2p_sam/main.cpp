@@ -17,7 +17,7 @@ void readdata(std::shared_ptr<i2p_sam::sam_socket> sock) {
 int main() {
 
     boost::asio::io_context io;
-    i2p_sam::async_create_stream_session(
+    i2p_sam::stream_session::async_create_stream_session(
         io, "LEFT", "TRANSIENT", "", "",
         [](std::shared_ptr<i2p_sam::stream_session> s, i2p_sam::errors::sam_error ec) {
             std::cout << ec.what() << std::endl;
