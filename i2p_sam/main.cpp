@@ -2,26 +2,33 @@
 #include "i2p_sam.h"
 #include <iostream>
 #include <string>
-int main() {
-    [[maybe_unused]] boost::asio::io_context io;
-    [[maybe_unused]] std::string host = "127.0.0.1";
-    [[maybe_unused]] uint16_t port = 7656;
-    [[maybe_unused]] std::string id = "KEK5";
-    [[maybe_unused]] std::string handshake_params = "MIN=3.2 MAX=3.3";
-    [[maybe_unused]] std::string params = "SIGNATURE_TYPE=ECDSA_SHA512_P521";
-    [[maybe_unused]] std::string destiantion = "TRANSIENT";
 
+void readdata(std::shared_ptr<i2p_sam::sam_socket> sock) {
+    sock->async_read_line(1000000, [sock](std::string res, i2p_sam::errors::sam_error ec) {
+        if (!ec) {
+            std::cout << res << std::endl;
+            readdata(sock);
+        } else {
+            std::cout << "Read error: " << ec.what() << std::endl;
+        }
+    });
+}
+
+int main() {
+
+    boost::asio::io_context io;
     i2p_sam::async_create_stream_session(
-        io, host, port, id, destiantion, handshake_params, params,
+        io, "LEFT", "TRANSIENT", "", "",
         [](std::shared_ptr<i2p_sam::stream_session> s, i2p_sam::errors::sam_error ec) {
             std::cout << ec.what() << std::endl;
             std::cout << s->get_public_destination() << std::endl;
-            s->async_connect(s->get_id(), s->get_public_destination(),
-                             [](std::shared_ptr<i2p_sam::sam_socket>, i2p_sam::errors::sam_error) {
-
-                             });
-            s->async_accept([s]([[maybe_unused]] std::shared_ptr<i2p_sam::sam_socket> sam_sock,
-                                std::string, uint16_t, uint16_t, i2p_sam::errors::sam_error) {});
+            s->async_forward(6065, [s](std::shared_ptr<i2p_sam::sam_socket> sock,
+                                       i2p_sam::errors::sam_error ec) {
+                std::cout << ec.what() << std::endl;
+                [[maybe_unused]] auto ss = new i2p_sam::sam_socket(std::move(*sock));
+                [[maybe_unused]] auto sss = new i2p_sam::stream_session(std::move(*s));
+            });
         });
+
     io.run();
 }

@@ -131,8 +131,7 @@ protected:
 };
 
 class stream_session : public sam_session {
-    // private:
-public:
+private:
     stream_session(sam_socket &, const std::string &, const std::string &, const std::string &);
 
 public:
@@ -141,11 +140,11 @@ public:
     stream_session &operator=(const stream_session &) = delete;
     stream_session &operator=(stream_session &&) = default;
     ~stream_session() = default;
+
     template <typename T>
-    friend void async_create_stream_session(boost::asio::io_context &io_context,
-                                            const std::string &, uint16_t, const std::string &,
+    friend void async_create_stream_session(boost::asio::io_context &, const std::string &,
                                             const std::string &, const std::string &,
-                                            const std::string &, T);
+                                            const std::string &, T, const std::string &, uint16_t);
 
     template <typename T>
     void async_accept(T handler, const std::string &host = "127.0.0.1",
@@ -236,17 +235,18 @@ public:
     template <typename T>
     void async_connect(const std::string &id, [[maybe_unused]] const std::string &dest, T handler,
                        uint16_t from_port = 0, uint16_t to_port = 0,
-                       const std::string &host = "127.0.0.1",
-                       uint16_t port = i2p_sam::sam_default_port,
+                       const std::string &sam_host = "127.0.0.1",
+                       uint16_t sam_port = i2p_sam::sam_default_port,
                        const std::string &handshake_params = "") {
         std::shared_ptr<sam_socket> sam_sock(new sam_socket(this->socket.get_io_executor()));
-        sam_sock->async_connect(host, port, [=](errors::sam_error ec) {
+        sam_sock->async_connect(sam_host, sam_port, [=](errors::sam_error ec) {
             if (!ec) {
                 async_handshake(*sam_sock, handshake_params, [=](errors::sam_error ec) {
                     if (!ec) {
                         sam_sock->async_write(
-                            "STREAM CONNECT ID=" + id + " DESTINATION=" + dest + " FROM_PORT=" +
-                                std::to_string(from_port) + " TO_PORT=" + std::to_string(to_port),
+                            "STREAM CONNECT ID=" + id + " DESTINATION=" + dest +
+                                " FROM_PORT=" + std::to_string(from_port) +
+                                " TO_PORT=" + std::to_string(to_port) + "\n",
                             [=](errors::sam_error ec, uint64_t) {
                                 if (!ec) {
                                     sam_sock->async_read_line(
@@ -266,6 +266,41 @@ public:
                     }
                 });
 
+            } else {
+                handler(sam_sock, ec);
+            }
+        });
+    }
+
+    template <typename T>
+    void async_forward(const uint16_t forward_port, T handler,
+                       const std::string &forward_host = "127.0.0.1", const bool silent = false,
+                       const bool ssl = false, const std::string &sam_host = "127.0.0.1",
+                       uint16_t sam_port = i2p_sam::sam_default_port,
+                       const std::string &handshake_params = "") {
+        std::shared_ptr<sam_socket> sam_sock(new sam_socket(this->socket.get_io_executor()));
+        sam_sock->async_connect(sam_host, sam_port, [=, id = this->get_id()](errors::sam_error ec) {
+            if (!ec) {
+                async_handshake(*sam_sock, handshake_params, [=](errors::sam_error ec) {
+                    if (!ec) {
+                        sam_sock->async_write(
+                            "STREAM FORWARD ID=" + id + " PORT=" + std::to_string(forward_port) +
+                                " HOST=" + forward_host + " SILENT=" + (silent ? "true" : "false") +
+                                " SSL=" + (ssl ? "true" : "false") + "\n",
+                            [=](errors::sam_error ec, uint64_t) {
+                                if (ec) {
+                                    sam_sock->close();
+                                }
+                                sam_sock->async_read_line(
+                                    i2p_sam::max_sam_answer_lenght,
+                                    [=](std::string res, errors::sam_error ec) {
+                                        handler(sam_sock, ec ? ec : i2p_sam::get_result(res));
+                                    });
+                            });
+                    } else {
+                        handler(sam_sock, ec);
+                    }
+                });
             } else {
                 handler(sam_sock, ec);
             }
@@ -295,13 +330,14 @@ void async_handshake(sam_socket &sam_sock, const std::string &args, T handler) {
 }
 
 template <typename T>
-void async_create_stream_session(boost::asio::io_context &io_context, const std::string &host,
-                                 uint16_t port, const std::string &id,
+void async_create_stream_session(boost::asio::io_context &io_context, const std::string &id,
                                  const std::string &destination,
                                  const std::string &handshake_params,
-                                 const std::string &stream_params, T handler) {
+                                 const std::string &stream_params, T handler,
+                                 const std::string &sam_host = "127.0.0.1",
+                                 uint16_t sam_port = 7656) {
     std::shared_ptr<sam_socket> sam_sock(new sam_socket(io_context));
-    sam_sock->async_connect(host, port, [=](errors::sam_error ec) {
+    sam_sock->async_connect(sam_host, sam_port, [=](errors::sam_error ec) {
         if (!ec) {
             async_handshake(*sam_sock, handshake_params, [=](errors::sam_error ec) {
                 if (!ec) {
