@@ -193,7 +193,6 @@ void async_create_stream_session(boost::asio::io_context &io_context, const std:
     });
 }
 
-
 class stream_session : public sam_session {
 private:
     stream_session(sam_socket &, const std::string &, const std::string &, const std::string &);
