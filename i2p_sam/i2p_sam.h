@@ -201,10 +201,9 @@ public:
             [handler](std::shared_ptr<i2p_sam::sam_socket> sam_sock, std::string id,
                       std::string pub_dest, std::string priv_dest, i2p_sam::errors::sam_error ec) {
                 if (!ec) {
-                    handler(
-                        std::shared_ptr<stream_session>(new stream_session(
-                            *sam_sock, id, public_destination_from_priv_key(priv_dest), priv_dest)),
-                        i2p_sam::errors::sam_error());
+                    handler(std::shared_ptr<stream_session>(
+                                new stream_session(*sam_sock, id, pub_dest, priv_dest)),
+                            i2p_sam::errors::sam_error());
                 } else {
                     handler(
                         std::shared_ptr<stream_session>(new stream_session(*sam_sock, "", "", "")),
@@ -374,6 +373,18 @@ public:
             }
         });
     }
+};
+
+class datagram_session : public sam_session {
+private:
+    datagram_session(sam_socket &, const std::string &, const std::string &, const std::string &);
+
+public:
+    datagram_session(const datagram_session &) = delete;
+    datagram_session(datagram_session &&) = default;
+    datagram_session &operator=(const datagram_session &) = delete;
+    datagram_session &operator=(datagram_session &&) = default;
+    ~datagram_session() = default;
 };
 
 template <typename T>
