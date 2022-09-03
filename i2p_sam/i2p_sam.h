@@ -7,11 +7,11 @@
 #include <string>
 
 namespace i2p_sam {
-const std::string min_version = "3.1";
-const std::string max_version = "3.3";
+const std::string sam_version = "3.3";
 enum sam_session_type { stream };
 const uint64_t max_sam_answer_lenght = 10000;
 const uint16_t sam_default_port = 7656;
+const uint16_t sam_udp_port = 7655;
 std::string public_destination_from_priv_key(const std::string priv_key);
 
 i2p_sam::errors::sam_error get_result(std::string);
@@ -35,6 +35,10 @@ public:
                 }
             });
     }
+
+    boost::asio::ip::tcp::endpoint remote_endpoint();
+
+    boost::asio::ip::tcp::endpoint local_endpoint();
 
     template <typename T> void async_write(const std::string &data, T handler) {
         std::shared_ptr<std::string> p_data(new std::string(data));
@@ -385,6 +389,69 @@ public:
     datagram_session &operator=(const datagram_session &) = delete;
     datagram_session &operator=(datagram_session &&) = default;
     ~datagram_session() = default;
+
+    template <typename T>
+    static void async_create_datagram_session(boost::asio::io_context &io_context,
+                                              const std::string &id, const std::string &destination,
+                                              const std::string &handshake_params,
+                                              const std::string &datagram_params, T handler,
+                                              const std::string &sam_host = "127.0.0.1",
+                                              uint16_t sam_port = 7656) {
+        i2p_sam::async_create_session(
+            io_context, "DATAGRAM", id, destination, handshake_params, datagram_params,
+            [handler](std::shared_ptr<i2p_sam::sam_socket> sam_sock, std::string id,
+                      std::string pub_dest, std::string priv_dest, i2p_sam::errors::sam_error ec) {
+                if (!ec) {
+                    handler(std::shared_ptr<datagram_session>(
+                                new datagram_session(*sam_sock, id, pub_dest, priv_dest)),
+                            i2p_sam::errors::sam_error());
+                } else {
+                    handler(std::shared_ptr<datagram_session>(
+                                new datagram_session(*sam_sock, "", "", "")),
+                            ec);
+                }
+            },
+            sam_host, sam_port);
+    }
+
+    template <typename T> // uint16_t because datagram limits
+    void async_send([[maybe_unused]] const std::string &destination, [[maybe_unused]] void *data,
+                    [[maybe_unused]] uint16_t size,
+                    [[maybe_unused]] const std::string &datagram_params,
+                    [[maybe_unused]] T handler) {
+        std::shared_ptr<boost::asio::ip::udp::resolver> resolver(
+            new boost::asio::ip::udp::resolver(this->socket.get_io_executor()));
+        std::shared_ptr<boost::asio::ip::udp::socket> udpsocket(
+            new boost::asio::ip::udp::socket(this->socket.get_io_executor()));
+        udpsocket->open(boost::asio::ip::udp::v4());
+        std::string datagram_info = i2p_sam::sam_version + " " + this->get_id() + " " +
+                                    destination + " " + datagram_params + "\n";
+        std::shared_ptr<char> data_ptr(new char[datagram_info.size() + size]);
+        std::memcpy(data_ptr.get(), datagram_info.data(), datagram_info.size());
+        std::memcpy(data_ptr.get() + datagram_info.size(), data, size);
+        resolver->async_resolve(
+            this->socket.remote_endpoint().address().to_string(),
+            std::to_string(i2p_sam::sam_udp_port),
+            [data_ptr, udpsocket, handler, size = size + datagram_info.size(),
+             resolver](const boost::system::error_code &ec,
+                       boost::asio::ip::udp::resolver::results_type results) {
+                if (!ec) {
+                    udpsocket->async_send_to(
+                        boost::asio::buffer(data_ptr.get(), size), *(results.begin()),
+                        [data_ptr, handler, udpsocket](const boost::system::error_code &ec,
+                                                       std::size_t) {
+                            if (!ec) {
+                                handler(i2p_sam::errors::sam_error());
+                            } else {
+                                handler(i2p_sam::errors::sam_error(i2p_sam::errors::network_error,
+                                                                   ec.what()));
+                            }
+                        });
+                } else {
+                    handler(i2p_sam::errors::sam_error(i2p_sam::errors::network_error, ec.what()));
+                }
+            });
+    }
 };
 
 template <typename T>

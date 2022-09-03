@@ -2,6 +2,14 @@
 #include "base64.h"
 #include <iostream>
 
+boost::asio::ip::tcp::endpoint i2p_sam::sam_socket::remote_endpoint() {
+    return socket.remote_endpoint();
+}
+
+boost::asio::ip::tcp::endpoint i2p_sam::sam_socket::local_endpoint() {
+    return socket.local_endpoint();
+}
+
 std::string i2p_sam::sam_session::get_id() { return id; }
 std::string i2p_sam::sam_session::get_public_destination() { return public_destination; }
 std::string i2p_sam::sam_session::get_private_destination() { return private_destination; }
@@ -15,6 +23,11 @@ i2p_sam::sam_session::sam_session(sam_socket &sock, const std::string &id_,
 i2p_sam::stream_session::stream_session(i2p_sam::sam_socket &sock, const std::string &id_,
                                         const std::string &public_destination_,
                                         const std::string &private_destination_)
+    : sam_session(sock, id_, public_destination_, private_destination_) {}
+
+i2p_sam::datagram_session::datagram_session(i2p_sam::sam_socket &sock, const std::string &id_,
+                                            const std::string &public_destination_,
+                                            const std::string &private_destination_)
     : sam_session(sock, id_, public_destination_, private_destination_) {}
 
 std::string i2p_sam::get_value(const std::string &s, const std::string &value) {
