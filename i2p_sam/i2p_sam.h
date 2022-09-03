@@ -599,7 +599,6 @@ void async_handshake(sam_socket &sam_sock, const std::string &args, T handler) {
                         handler(errors::sam_error(errors::network_error, ec.what()));
                     }
                 });
-
         } else {
             handler(err);
         }
