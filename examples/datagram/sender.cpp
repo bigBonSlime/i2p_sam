@@ -10,12 +10,13 @@ int main() {
         io, false, "ID", dest, "", "",
         [=](std::shared_ptr<i2p_sam::datagram_session> s, i2p_sam::errors::sam_error ec) {
             std::cout << "Session create " << ec.what() << '\n';
-            std::string t_dest= "target destination";
+            std::string t_dest = "target destination";
             std::string data = "Hello world";
             for (int i = 0; i < 1000; i++) {
-                s->async_send(t_dest, data.data(), (uint16_t)data.size(), "", [](i2p_sam::errors::sam_error) {
+                s->async_send(t_dest, data.data(), (uint16_t)data.size(), "",
+                              [](i2p_sam::errors::sam_error) {
 
-                });
+                              });
             }
         });
 
