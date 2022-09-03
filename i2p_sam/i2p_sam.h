@@ -523,7 +523,7 @@ public:
                     }
                     header += "SIZE=" + std::to_string(size) +
                               " FROM_PORT=" + std::to_string(from_port) +
-                              " TO_PORT=" std::to_string(to_port) + "\n";
+                              " TO_PORT=" + std::to_string(to_port) + "\n";
                 }
                 std::shared_ptr<std::byte[]> data_ptr(new std::byte[header.size() + size]);
                 std::memcpy(data_ptr.get(), header.data(), header.size());
