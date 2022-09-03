@@ -423,7 +423,7 @@ public:
 
 class datagram_session : public sam_session {
 private:
-    bool anonymous;
+    [[maybe_unused]] bool anonymous;
     datagram_session(sam_socket &, const std::string &, const std::string &, const std::string &,
                      bool anonymous_ = false);
     template <typename T>
