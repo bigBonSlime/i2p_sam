@@ -25,8 +25,7 @@ class sam_socket {
 public:
     boost::asio::any_io_executor get_io_executor();
 
-    template <typename T>
-    void async_write([[maybe_unused]] const void *data, [[maybe_unused]] uint64_t len, T handler) {
+    template <typename T> void async_write(const void *data, uint64_t len, T handler) {
         boost::asio::async_write(
             this->socket, boost::asio::buffer(data, len),
             [handler](const boost::system::error_code error, uint64_t bytes_transferred) {
@@ -50,9 +49,7 @@ public:
             [handler, p_data](errors::sam_error err, uint64_t bytes) { handler(err, bytes); });
     }
 
-    template <typename T>
-    void async_read([[maybe_unused]] std::byte *dest, [[maybe_unused]] uint64_t bytes,
-                    [[maybe_unused]] T handler) {
+    template <typename T> void async_read(std::byte *dest, uint64_t bytes, T handler) {
 
         if (bytes == 0) {
             handler(errors::sam_error(), 0);
@@ -97,13 +94,11 @@ public:
         }
     }
 
-    template <typename T>
-    void async_read_line([[maybe_unused]] uint64_t max_size, [[maybe_unused]] T handler) {
+    template <typename T> void async_read_line(uint64_t max_size, T handler) {
         auto buffer_p = &buffer;
         boost::asio::async_read_until(
             this->socket, boost::asio::dynamic_buffer(*buffer_p, max_size), '\n',
-            [handler, buffer_p]([[maybe_unused]] const boost::system::error_code &error,
-                                std::size_t delimiter_pos) {
+            [handler, buffer_p](const boost::system::error_code &error, std::size_t delimiter_pos) {
                 if (!error) {
                     std::string res_str(reinterpret_cast<char *>(buffer_p->data()), delimiter_pos);
                     buffer_p->erase(buffer_p->begin(),
@@ -351,7 +346,7 @@ public:
     */
 
     template <typename T>
-    void async_connect(const std::string &id, [[maybe_unused]] const std::string &dest, T handler,
+    void async_connect(const std::string &id, const std::string &dest, T handler,
                        uint16_t from_port = 0, uint16_t to_port = 0,
                        const std::string &sam_host = "127.0.0.1",
                        uint16_t sam_port = i2p_sam::sam_default_port,
@@ -496,10 +491,8 @@ public:
     }
 
     template <typename T> // uint16_t because datagram limits
-    void async_send([[maybe_unused]] const std::string &destination, [[maybe_unused]] void *data,
-                    [[maybe_unused]] uint16_t size,
-                    [[maybe_unused]] const std::string &datagram_params,
-                    [[maybe_unused]] T handler) {
+    void async_send(const std::string &destination, void *data, uint16_t size,
+                    const std::string &datagram_params, T handler) {
         std::string datagram_info = i2p_sam::sam_version + " " + this->get_id() + " " +
                                     destination + " " + datagram_params + "\n";
         std::shared_ptr<std::byte[]> data_ptr(new std::byte[datagram_info.size() + size]);
@@ -539,11 +532,10 @@ public:
     void async_read_datagram(T handler) {
         this->socket.async_read_line(
             i2p_sam::max_sam_answer_lenght,
-            [this, handler, socket = &this->socket](std::string s, i2p_sam::errors::sam_error ec) {
+            [handler, socket = &this->socket](std::string s, i2p_sam::errors::sam_error ec) {
                 if (!ec) {
                     const char datagram_rec[] = "DATAGRAM RECEIVED";
                     const char raw_rec[] = "RAW RECEIVED";
-                    [[maybe_unused]] auto i = sizeof(datagram_rec);
                     if (((s.size() >= sizeof(datagram_rec)) &&
                          (std::memcmp(s.data(), datagram_rec, sizeof(datagram_rec) - 1) == 0)) ||
                         ((s.size() >= sizeof(raw_rec)) &&
