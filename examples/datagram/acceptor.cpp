@@ -23,5 +23,14 @@ void readdata(std::shared_ptr<i2p_sam::datagram_session> sock) {
 }
 
 int main() {
+    boost::asio::io_context io;
+    std::string dest = "my_destination"; //maybe TRANSIENT
+    i2p_sam::datagram_session::async_create_datagram_session(
+        io, false, "ID", dest, "", "",
+        [=](std::shared_ptr<i2p_sam::datagram_session> s, i2p_sam::errors::sam_error ec) {
+            std::cout << "Session create " << ec.what() << '\n';
+            readdata(s);
+        });
 
+    io.run();
 }
