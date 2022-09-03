@@ -2,14 +2,17 @@
 #define I2P_SAM_H
 #include "boost/asio.hpp"
 #include "sam_error.h"
+#include <deque>
 #include <iostream>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace i2p_sam {
 const std::string sam_version = "3.3";
 enum sam_session_type { stream };
-const uint64_t max_sam_answer_lenght = 10000;
+const uint64_t max_sam_answer_lenght = 10000000;
+// const uint64_t max_socket_buffer_lenght = 100000;
 const uint16_t sam_default_port = 7656;
 const uint16_t sam_udp_port = 7655;
 std::string public_destination_from_priv_key(const std::string priv_key);
@@ -47,31 +50,70 @@ public:
             [handler, p_data](errors::sam_error err, uint64_t bytes) { handler(err, bytes); });
     }
 
-    template <typename T> void async_read(void *dest, uint64_t bytes, T handler) {
-        boost::asio::async_read(
-            this->socket, boost::asio::buffer(dest, bytes),
-            [handler](const boost::system::error_code &error, uint64_t bytes_transferred) {
-                if (!error) {
-                    handler(errors::sam_error(), bytes_transferred);
-                } else {
-                    handler(errors::sam_error(errors::error_codes::network_error, error.what()),
-                            bytes_transferred);
-                }
-            });
+    template <typename T>
+    void async_read([[maybe_unused]] std::byte *dest, [[maybe_unused]] uint64_t bytes,
+                    [[maybe_unused]] T handler) {
+
+        if (bytes == 0) {
+            handler(errors::sam_error(), 0);
+            return;
+        }
+        if (bytes <= buffer.size()) {
+            std::memcpy(dest, buffer.data(), bytes);
+            buffer.erase(buffer.begin(), buffer.begin() + bytes);
+            handler(errors::sam_error(), bytes);
+        } else {
+            std::size_t buffer_size = buffer.size();
+            if (!buffer.empty()) {
+                std::memcpy(dest, buffer.data(), buffer.size());
+                buffer.clear();
+            }
+            boost::asio::async_read(
+                this->socket, boost::asio::buffer(dest + buffer.size(), bytes - buffer.size()),
+                [=](const boost::system::error_code error, std::size_t bytes_transferred) {
+                    handler(error ? (errors::sam_error(errors::error_codes::network_error,
+                                                       error.what()))
+                                  : (errors::sam_error()),
+                            buffer_size + bytes_transferred);
+                });
+            /*
+            std::size_t read_from_buffer = buffer.size() - buffer_start_pos;
+            boost::asio::async_read(
+                this->socket,
+                boost::asio::buffer(dest + read_from_buffer, bytes - read_from_buffer),
+                [dest, read_from_buffer, buffer = &buffer, buffer_start_pos = &buffer_start_pos,
+                 handler](const boost::system::error_code error, std::size_t bytes_transferred) {
+                    if (read_from_buffer != 0) {
+                        std::memcpy(dest, buffer->data() + *buffer_start_pos, read_from_buffer);
+                    }
+                    buffer->clear();
+                    *buffer_start_pos = 0;
+                    handler(error ? (errors::sam_error(errors::error_codes::network_error,
+                                                       error.what()))
+                                  : (errors::sam_error()),
+                            read_from_buffer + bytes_transferred);
+                });
+                */
+        }
     }
 
-    template <typename T> void async_read_line(uint64_t max_size, T handler) {
-        std::shared_ptr<std::vector<char>> vec(new std::vector<char>);
+    template <typename T>
+    void async_read_line([[maybe_unused]] uint64_t max_size, [[maybe_unused]] T handler) {
+        auto buffer_p = &buffer;
         boost::asio::async_read_until(
-            this->socket, boost::asio::dynamic_buffer(*vec, max_size), '\n',
-            [vec, handler](const boost::system::error_code &error, std::size_t) {
-                if (error) {
-                    handler(std::move(std::string(vec->begin(), vec->end())),
-                            i2p_sam::errors::sam_error(i2p_sam::errors::error_codes::network_error,
-                                                       error.what()));
+            this->socket, boost::asio::dynamic_buffer(*buffer_p, max_size), '\n',
+            [handler, buffer_p]([[maybe_unused]] const boost::system::error_code &error,
+                                std::size_t delimiter_pos) {
+                if (!error) {
+                    std::string res_str(reinterpret_cast<char *>(buffer_p->data()), delimiter_pos);
+                    buffer_p->erase(buffer_p->begin(), buffer_p->begin() + delimiter_pos ); // tooooooooo long. idk how to fix
+                    handler(std::move(res_str), i2p_sam::errors::sam_error());
                 } else {
-                    handler(std::move(std::string(vec->begin(), vec->end())),
-                            i2p_sam::errors::sam_error());
+                    std::string res_str(reinterpret_cast<char *>(buffer_p->data()),
+                                        buffer_p->size());
+                    buffer_p->clear();
+                    handler(std::move(res_str), i2p_sam::errors::sam_error(
+                                                    i2p_sam::errors::network_error, error.what()));
                 }
             });
     }
@@ -110,6 +152,9 @@ public:
 
 private:
     boost::asio::ip::tcp::socket socket;
+    std::vector<std::byte> buffer;
+    // boost::asio::streambuf buffer;
+    // std::size_t buffer_start_pos = 0;
 };
 
 class sam_session {
@@ -381,58 +426,20 @@ public:
 
 class datagram_session : public sam_session {
 private:
-    datagram_session(sam_socket &, const std::string &, const std::string &, const std::string &);
-
-public:
-    datagram_session(const datagram_session &) = delete;
-    datagram_session(datagram_session &&) = default;
-    datagram_session &operator=(const datagram_session &) = delete;
-    datagram_session &operator=(datagram_session &&) = default;
-    ~datagram_session() = default;
-
+    bool anonymous;
+    datagram_session(sam_socket &, const std::string &, const std::string &, const std::string &,
+                     bool anonymous_ = false);
     template <typename T>
-    static void async_create_datagram_session(boost::asio::io_context &io_context,
-                                              const std::string &id, const std::string &destination,
-                                              const std::string &handshake_params,
-                                              const std::string &datagram_params, T handler,
-                                              const std::string &sam_host = "127.0.0.1",
-                                              uint16_t sam_port = 7656) {
-        i2p_sam::async_create_session(
-            io_context, "DATAGRAM", id, destination, handshake_params, datagram_params,
-            [handler](std::shared_ptr<i2p_sam::sam_socket> sam_sock, std::string id,
-                      std::string pub_dest, std::string priv_dest, i2p_sam::errors::sam_error ec) {
-                if (!ec) {
-                    handler(std::shared_ptr<datagram_session>(
-                                new datagram_session(*sam_sock, id, pub_dest, priv_dest)),
-                            i2p_sam::errors::sam_error());
-                } else {
-                    handler(std::shared_ptr<datagram_session>(
-                                new datagram_session(*sam_sock, "", "", "")),
-                            ec);
-                }
-            },
-            sam_host, sam_port);
-    }
-
-    template <typename T> // uint16_t because datagram limits
-    void async_send([[maybe_unused]] const std::string &destination, [[maybe_unused]] void *data,
-                    [[maybe_unused]] uint16_t size,
-                    [[maybe_unused]] const std::string &datagram_params,
-                    [[maybe_unused]] T handler) {
+    void async_send_udp(const std::string &host, uint16_t port,
+                        std::shared_ptr<std::byte[]> data_ptr, std::size_t size, T handler) {
         std::shared_ptr<boost::asio::ip::udp::resolver> resolver(
             new boost::asio::ip::udp::resolver(this->socket.get_io_executor()));
         std::shared_ptr<boost::asio::ip::udp::socket> udpsocket(
             new boost::asio::ip::udp::socket(this->socket.get_io_executor()));
         udpsocket->open(boost::asio::ip::udp::v4());
-        std::string datagram_info = i2p_sam::sam_version + " " + this->get_id() + " " +
-                                    destination + " " + datagram_params + "\n";
-        std::shared_ptr<char> data_ptr(new char[datagram_info.size() + size]);
-        std::memcpy(data_ptr.get(), datagram_info.data(), datagram_info.size());
-        std::memcpy(data_ptr.get() + datagram_info.size(), data, size);
         resolver->async_resolve(
-            this->socket.remote_endpoint().address().to_string(),
-            std::to_string(i2p_sam::sam_udp_port),
-            [data_ptr, udpsocket, handler, size = size + datagram_info.size(),
+            host, std::to_string(port),
+            [data_ptr, udpsocket, handler, size,
              resolver](const boost::system::error_code &ec,
                        boost::asio::ip::udp::resolver::results_type results) {
                 if (!ec) {
@@ -449,6 +456,129 @@ public:
                         });
                 } else {
                     handler(i2p_sam::errors::sam_error(i2p_sam::errors::network_error, ec.what()));
+                }
+            });
+    }
+
+public:
+    datagram_session(const datagram_session &) = delete;
+    datagram_session(datagram_session &&) = default;
+    datagram_session &operator=(const datagram_session &) = delete;
+    datagram_session &operator=(datagram_session &&) = default;
+    ~datagram_session() = default;
+
+    template <typename T>
+    static void async_create_datagram_session(boost::asio::io_context &io_context, bool anonymous,
+                                              const std::string &id, const std::string &destination,
+                                              const std::string &handshake_params,
+                                              const std::string &datagram_params, T handler,
+                                              const std::string &sam_host = "127.0.0.1",
+                                              uint16_t sam_port = 7656) {
+        std::string session_type = (anonymous ? "RAW" : "DATAGRAM");
+        i2p_sam::async_create_session(
+            io_context, session_type, id, destination, handshake_params, datagram_params,
+            [handler, anonymous](std::shared_ptr<i2p_sam::sam_socket> sam_sock, std::string id,
+                                 std::string pub_dest, std::string priv_dest,
+                                 i2p_sam::errors::sam_error ec) {
+                if (!ec) {
+                    handler(std::shared_ptr<datagram_session>(
+                                new datagram_session(*sam_sock, id, pub_dest, priv_dest)),
+                            i2p_sam::errors::sam_error());
+                } else {
+                    handler(std::shared_ptr<datagram_session>(
+                                new datagram_session(*sam_sock, "", "", "", anonymous)),
+                            ec);
+                }
+            },
+            sam_host, sam_port);
+    }
+
+    template <typename T> // uint16_t because datagram limits
+    void async_send([[maybe_unused]] const std::string &destination, [[maybe_unused]] void *data,
+                    [[maybe_unused]] uint16_t size,
+                    [[maybe_unused]] const std::string &datagram_params,
+                    [[maybe_unused]] T handler) {
+        std::string datagram_info = i2p_sam::sam_version + " " + this->get_id() + " " +
+                                    destination + " " + datagram_params + "\n";
+        std::shared_ptr<std::byte[]> data_ptr(new std::byte[datagram_info.size() + size]);
+        std::memcpy(data_ptr.get(), datagram_info.data(), datagram_info.size());
+        std::memcpy(data_ptr.get() + datagram_info.size(), data, size);
+        async_send_udp(this->socket.remote_endpoint().address().to_string(), i2p_sam::sam_udp_port,
+                       data_ptr, datagram_info.size() + size, handler);
+    }
+
+    template <typename T> // forward
+    void async_read_datagram(T handler, const std::string &host, uint16_t port,
+                             bool silent = true) {
+        this->async_read_datagram([this](std::string dest, std::size_t size, uint16_t from_port,
+                                         uint16_t to_port, std::shared_ptr<std::byte[]> data,
+                                         i2p_sam::errors::sam_error ec) {
+            if (!ec) {
+
+                std::string header;
+                if (!silent) {
+                    if (dest != "") {
+                        header += "DESTINATION=" + dest + " "
+                    }
+                    header += "SIZE=" + std::to_string(size) +
+                              " FROM_PORT=" + std::to_string(from_port) +
+                              " TO_PORT=" std::to_string(to_port) + "\n";
+                }
+                std::shared_ptr<std::byte[]> data_ptr(new std::byte[header.size() + size]);
+                std::memcpy(data_ptr.get(), header.data(), header.size());
+                std::memcpy(data_ptr.get() + header.size(), data.get(), size);
+                async_send_udp(host, port, data_ptr, size + header.size(), handler);
+            } else {
+                handler(ec);
+            }
+        });
+    }
+
+    template <typename T> // read
+    void async_read_datagram(T handler) {
+        this->socket.async_read_line(
+            i2p_sam::max_sam_answer_lenght,
+            [this, handler, socket = &this->socket](std::string s, i2p_sam::errors::sam_error ec) {
+                if (!ec) {
+                    const char datagram_rec[] = "DATAGRAM RECEIVED";
+                    const char raw_rec[] = "RAW RECEIVED";
+                    [[maybe_unused]] auto i = sizeof(datagram_rec);
+                    if (((s.size() >= sizeof(datagram_rec)) &&
+                         (std::memcmp(s.data(), datagram_rec, sizeof(datagram_rec) - 1) == 0)) ||
+                        ((s.size() >= sizeof(raw_rec)) &&
+                         (std::memcmp(s.data(), raw_rec, sizeof(raw_rec) - 1) == 0))) {
+                        std::string dest = i2p_sam::get_value(s, "DESTINATION");
+                        std::size_t size =
+                            static_cast<std::size_t>(std::stoull(i2p_sam::get_value(s, "SIZE")));
+                        std::uint16_t from_port = static_cast<std::uint16_t>(
+                            std::stoull(i2p_sam::get_value(s, "FROM_PORT")));
+                        std::uint16_t to_port = static_cast<std::uint16_t>(
+                            std::stoull(i2p_sam::get_value(s, "TO_PORT")));
+                        std::shared_ptr<std::byte[]> data(new std::byte[size]);
+                        socket->async_read(
+                            data.get(), size, [=](i2p_sam::errors::sam_error ec, uint64_t bc) {
+                                if (!ec) {
+                                    handler(dest, size, from_port, to_port, std::move(data), ec);
+                                } else {
+                                    handler(dest, bc, from_port, to_port, std::move(data), ec);
+                                }
+                            });
+
+                    } else { // PONG???
+                        if ((s.size() >= 4) && (std::memcmp(s.data(), "PONG", 4) == 0)) {
+                            std::string text = s.substr(s.find(' ') + 1);
+                            socket->async_write("PONG " + text + "\n",
+                                                [](i2p_sam::errors::sam_error, uint64_t) {
+
+                                                });
+                        } else {
+                            handler(
+                                "", 0, 0, 0, nullptr,
+                                i2p_sam::errors::sam_error(i2p_sam::errors::unexpected_input, ""));
+                        }
+                    }
+                } else {
+                    handler("", 0, 0, 0, nullptr, ec);
                 }
             });
     }

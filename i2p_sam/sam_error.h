@@ -18,6 +18,7 @@ enum error_codes {
     i2p_error_duplicated_id,
     i2p_error_noversion,
     i2p_error_timeout,
+    unexpected_input,
     unknown_error
 };
 

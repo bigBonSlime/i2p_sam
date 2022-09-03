@@ -3,30 +3,33 @@
 #include <iostream>
 #include <string>
 
-void readdata(std::shared_ptr<i2p_sam::sam_socket> sock) {
-    sock->async_read_line(1000000, [sock](std::string res, i2p_sam::errors::sam_error ec) {
-        if (!ec) {
-            std::cout << res << std::endl;
-            readdata(sock);
-        } else {
-            std::cout << "Read error: " << ec.what() << std::endl;
-        }
-    });
+int counter = 0;
+
+void readdata(std::shared_ptr<i2p_sam::datagram_session> sock) {
+    sock->async_read_datagram(
+        [sock]([[maybe_unused]] std::string dest, [[maybe_unused]] std::size_t size,
+               [[maybe_unused]] uint16_t from_port, [[maybe_unused]] uint16_t to_port,
+               std::shared_ptr<std::byte[]> data, i2p_sam::errors::sam_error ec) {
+            if (!ec) {
+                std::string s((char *)data.get(), size);
+                std::cout << s << " " << counter << '\n';
+                counter += 1;
+                readdata(sock);
+            } else {
+
+                std::cout << ec.what();
+            }
+        });
 }
 
 int main() {
     boost::asio::io_context io;
-    std::string dest = "";
+    std::string dest = "target_destination";
     i2p_sam::datagram_session::async_create_datagram_session(
-        io, "ID", "TRANSIENT", "", "",
+        io, false, "ID", dest, "", "",
         [=](std::shared_ptr<i2p_sam::datagram_session> s, i2p_sam::errors::sam_error ec) {
-            std::string data = "DATA";
-            for (int i = 0; i < 1000; i++) {
-                s->async_send(dest, data.data(), static_cast<uint16_t>(data.size()), "",
-                              [s](i2p_sam::errors::sam_error ec) { std::cout << ec.what() << '\n';
-                                 
-                              });
-            }
+            std::cout << "Session create " << ec.what() << '\n';
+            readdata(s);
         });
 
     io.run();
