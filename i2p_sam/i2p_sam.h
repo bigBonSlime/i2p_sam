@@ -106,7 +106,9 @@ public:
                                 std::size_t delimiter_pos) {
                 if (!error) {
                     std::string res_str(reinterpret_cast<char *>(buffer_p->data()), delimiter_pos);
-                    buffer_p->erase(buffer_p->begin(), buffer_p->begin() + delimiter_pos ); // tooooooooo long. idk how to fix
+                    buffer_p->erase(buffer_p->begin(),
+                                    buffer_p->begin() +
+                                        delimiter_pos); // tooooooooo long. idk how to fix
                     handler(std::move(res_str), i2p_sam::errors::sam_error());
                 } else {
                     std::string res_str(reinterpret_cast<char *>(buffer_p->data()),
@@ -510,15 +512,14 @@ public:
     template <typename T> // forward
     void async_read_datagram(T handler, const std::string &host, uint16_t port,
                              bool silent = true) {
-        this->async_read_datagram([this](std::string dest, std::size_t size, uint16_t from_port,
-                                         uint16_t to_port, std::shared_ptr<std::byte[]> data,
-                                         i2p_sam::errors::sam_error ec) {
+        this->async_read_datagram([=](std::string dest, std::size_t size, uint16_t from_port,
+                                      uint16_t to_port, std::shared_ptr<std::byte[]> data,
+                                      i2p_sam::errors::sam_error ec) {
             if (!ec) {
-
                 std::string header;
                 if (!silent) {
                     if (dest != "") {
-                        header += "DESTINATION=" + dest + " "
+                        header += "DESTINATION=" + dest + " ";
                     }
                     header += "SIZE=" + std::to_string(size) +
                               " FROM_PORT=" + std::to_string(from_port) +

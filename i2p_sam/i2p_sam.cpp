@@ -27,7 +27,8 @@ i2p_sam::stream_session::stream_session(i2p_sam::sam_socket &sock, const std::st
 
 i2p_sam::datagram_session::datagram_session(i2p_sam::sam_socket &sock, const std::string &id_,
                                             const std::string &public_destination_,
-                                            const std::string &private_destination_, bool anonymous_)
+                                            const std::string &private_destination_,
+                                            bool anonymous_)
     : sam_session(sock, id_, public_destination_, private_destination_), anonymous(anonymous_) {}
 
 std::string i2p_sam::get_value(const std::string &s, const std::string &value) {
