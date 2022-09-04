@@ -510,14 +510,14 @@ public:
                     std::uint16_t to_port =
                         static_cast<std::uint16_t>(std::stoull(i2p_sam::get_value(s, "TO_PORT")));
                     std::shared_ptr<std::byte[]> data(new std::byte[size]);
-                    socket->async_read(
-                        data.get(), size, [=](i2p_sam::errors::sam_error ec, uint64_t bc) {
-                            if (!ec) {
-                                handler(dest, size, from_port, to_port, data, ec);
-                            } else {
-                                handler(dest, bc, from_port, to_port, data, ec);
-                            }
-                        });
+                    socket->async_read(data.get(), size,
+                                       [=](i2p_sam::errors::sam_error ec, uint64_t bc) {
+                                           if (!ec) {
+                                               handler(dest, size, from_port, to_port, data, ec);
+                                           } else {
+                                               handler(dest, bc, from_port, to_port, data, ec);
+                                           }
+                                       });
 
                 } else { // PONG???
                     if ((s.size() >= 4) && (std::memcmp(s.data(), "PONG", 4) == 0)) {
