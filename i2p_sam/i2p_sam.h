@@ -513,9 +513,9 @@ public:
                     socket->async_read(
                         data.get(), size, [=](i2p_sam::errors::sam_error ec, uint64_t bc) {
                             if (!ec) {
-                                handler(dest, size, from_port, to_port, std::move(data), ec);
+                                handler(dest, size, from_port, to_port, data, ec);
                             } else {
-                                handler(dest, bc, from_port, to_port, std::move(data), ec);
+                                handler(dest, bc, from_port, to_port, data, ec);
                             }
                         });
 
